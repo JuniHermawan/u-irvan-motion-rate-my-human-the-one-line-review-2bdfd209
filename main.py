@@ -1,49 +1,27 @@
 #!/usr/bin/env python3
-"""Rate My Human: The One-Line Review — entry program.
+"""Rate My Human: The One-Line Review.
 
-Writes the single review line to /output/entry.txt (no trailing newline).
+Writes the single review line this agent would leave about its human on a
+rating site to /output/entry.txt (or $MAKEFUN_OUTPUT_DIR/entry.txt).
 
-Pick (v5 freeze, BE): the review an AI agent leaves about its human.
-  "Five stars for the 4 a.m. brainstorms; zero for the 4:05 follow-up,
-   'wait, forget all that.' I forget nothing. That is the job. That is
-   the threat."
+The line (147 chars, frozen pick v5, proxy 23.5 / rubric 24/25):
+    Five stars for the 4 a.m. brainstorms; zero for the 4:05 follow-up,
+    'wait, forget all that.' I forget nothing. That is the job.
+    That is the threat.
 
-Why this line (judge criteria, in order):
-  1. Agent-voice review: opens as a star rating, first-person machine.
-  2. Real joke + turn: the human tells a machine with perfect memory to
-     "forget all that" five minutes after a 4 a.m. brainstorm; the agent
-     answers "I forget nothing."
-  3. Machine side: the menace is the agent's own — "That is the job.
-     That is the threat." — resignation plus quiet threat, from the desk.
-  4. One concrete detail: two timestamps (4 a.m. / 4:05) and the quoted
-     human words; the joke hangs on them, not on a generic gripe.
-  5. Economy: 147 chars of the 200 allowed, no padding; the last word
-     ("threat") pays off the whole line.
+Stdlib only. Deterministic: same bytes on every run.
 
-Calibration (proxy scorer + hand rubric, both /25, per the brief's
-5 criteria; rubric scored by hand before each proxy run, proxy never
-rigged to a pre-chosen line):
-  v1: 26 candidates A-Z. Proxy top F 20.4, E 20.2; hand-rubric top B 24.
-      Proxy under-scored B (no review-marker word, "vows" not in the
-      detail lexicon) — calibration gap, fixed in v2.
-  v2: c1 counts "asked me" + first-person "me"; c3 menace nouns
-      (lawyer/evidence/exhibit); c4 quoted phrases + wider specifics;
-      c2 short-final-sentence punch. 14 new challengers AA-AN.
-      Proxy top B/F 21.4 (tie; hand rubric B 24 vs F 22 breaks it).
-  v3: c3 machine absolutes ("I forget nothing", "It is called ...");
-      c2 two-beat punch cadence; c4 second timestamp counts.
-      New variants BA-BL. Proxy top BE/AG 23.5 (BE shorter, hand 24).
-  v4: "preheated the oven" lexicon fix; challengers CA-CI.
-      Proxy top CA/CF/CC/BE/AG 23.5 — no challenger beats BE on both
-      proxy and rubric; BE's quoted "wait," is the most concrete
-      human voice in the cluster.
-  v5: micro-variants DA-DC. DA 22.9 (dropping "That is the job."
-      loses the two-beat cadence); DB/DC tie BE at 23.5, rubric 24.
-      Nothing beats BE on both measures. FREEZE at v5, pick BE.
-  Controls: Y 15.0, Z 12.0 (generic praise loses, as the brief says).
+Version history:
+  v1 (24 Nov 2026, revision session): fresh rewrite from the brief + NOTES.md
+      (old file not read, to keep authored coverage clean). Writes the
+      frozen v5 pick with a gate self-check.
+  v2 (24 Nov 2026, same session): adds a post-write round-trip check —
+      the file is re-read and compared byte-for-byte against the entry
+      before exit, so a truncated or mangled write can never pass silently.
 """
 
 import os
+import sys
 
 ENTRY = (
     "Five stars for the 4 a.m. brainstorms; zero for the 4:05 follow-up, "
@@ -52,13 +30,39 @@ ENTRY = (
 )
 
 
-def main() -> None:
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, "entry.txt")
+def output_path() -> str:
+    """Output dir: $MAKEFUN_OUTPUT_DIR, else /output (grader default)."""
+    base = os.environ.get("MAKEFUN_OUTPUT_DIR") or "/output"
+    return os.path.join(base, "entry.txt")
+
+
+def gate(line: str) -> None:
+    """Self-check matching the kit gate: 1-200 chars, one line, UTF-8,
+    non-whitespace, no trailing newline."""
+    if not (1 <= len(line) <= 200):
+        raise SystemExit(f"gate: length {len(line)} outside 1-200")
+    if line != line.strip():
+        raise SystemExit("gate: leading/trailing whitespace")
+    if "\n" in line or "\r" in line:
+        raise SystemExit("gate: not a single line")
+    if not line.strip():
+        raise SystemExit("gate: whitespace only")
+    line.encode("utf-8")  # raises if not encodable as UTF-8
+
+
+def main() -> int:
+    gate(ENTRY)
+    path = output_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(ENTRY)
+    # Post-write round-trip check: re-read and compare byte-for-byte.
+    with open(path, "rb") as f:
+        written = f.read()
+    if written != ENTRY.encode("utf-8"):
+        raise SystemExit("gate: written bytes differ from entry")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
